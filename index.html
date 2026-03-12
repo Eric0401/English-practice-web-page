@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英文單字學習系統 Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+        
+        body { font-family: 'Lexend', 'Noto Sans TC', sans-serif; }
+        
+        /* 毛玻璃效果 */
+        .glass { 
+            background: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(10px); 
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        /* 修正後的陰影 CSS */
+        .btn-shadow { 
+            box-shadow: 0 10px 15px -3px rgba(165, 180, 252, 0.5), 
+                        0 4px 6px -2px rgba(165, 180, 252, 0.2); 
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .btn-shadow:active {
+            transform: scale(0.95);
+            box-shadow: 0 5px 10px -3px rgba(165, 180, 252, 0.5);
+        }
+
+        /* 自定義滾動條 (讓解釋區太長時比較美觀) */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-blue-100 min-h-screen flex items-center justify-center p-4">
+
+    <div id="loading" class="text-center">
+        <div class="animate-spin text-6xl mb-4">🌀</div>
+        <p class="text-indigo-600 font-bold tracking-widest animate-pulse">正在從雲端抓取今日教材...</p>
+    </div>
+
+    <div id="card" class="hidden max-w-lg w-full glass rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+        <div class="bg-indigo-600 p-5 text-white flex justify-between items-center">
+            <div>
+                <span id="type-badge" class="bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 inline-block">General</span>
+                <div id="progress-text" class="text-xs font-bold opacity-80 mt-1 tracking-widest text-indigo-100 uppercase">Word 1 / 11</div>
+            </div>
+            <button onclick="refreshNewSet()" class="text-xs bg-indigo-500 hover:bg-indigo-400 px-4 py-2 rounded-xl transition-all font-bold border border-indigo-400 active:scale-90">
+                🔄 換一組新單字
+            </button>
+        </div>
+
+        <div class="p-8">
+            <div class="text-center mb-8">
+                <h2 id="word-display" class="text-5xl font-black text-gray-800 mb-2 tracking-tight">Word</h2>
+                <p id="phonetic" class="text-indigo-500 font-bold text-xl mb-4 bg-indigo-50 inline-block px-4 py-1 rounded-full tracking-wide">/音標/</p>
+                
+                <div class="flex items-center justify-center gap-3 mb-6">
+                    <span id="pos" class="text-indigo-400 italic font-black text-lg">pos.</span>
+                    <span id="translation" class="text-gray-700 text-3xl font-black">中文翻譯</span>
+                </div>
+                
+                <button onclick="playAudio()" class="btn-shadow mx-auto w-16 h-16 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="bg-slate-50/50 rounded-2xl p-5 mb-8 border border-slate-100 max-h-32 overflow-y-auto custom-scroll">
+                <p class="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-[0.2em]">English Definition</p>
+                <p id="en-definition" class="text-gray-600 leading-relaxed font-medium italic">載入解釋中...</p>
+            </div>
+
+            <div id="quiz-area" class="hidden mb-8 p-6 bg-indigo-50 rounded-[2rem] border-2 border-indigo-100 animate-in fade-in zoom-in duration-300">
+                <p class="text-center text-[10px] font-bold text-indigo-400 mb-3 uppercase tracking-widest">Spelling Practice</p>
+                <input type="text" id="quiz-input" autocomplete="off" placeholder="請拼寫該單字..." 
+                    class="w-full px-4 py-4 bg-white rounded-2xl border-2 border-transparent focus:border-indigo-400 outline-none text-center text-2xl font-bold transition-all shadow-inner">
+                <p id="feedback" class="text-center mt-3 font-bold h-5 text-sm"></p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="prevWord()" class="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95 shadow-sm">上一個</button>
+                <button onclick="nextWord()" class="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all active:scale-95 shadow-sm">下一個</button>
+                
+                <button id="toggle-quiz-btn" onclick="toggleQuiz()" class="col-span-2 py-5 bg-gray-900 text-white rounded-2xl font-bold hover:bg-black shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-2">
+                    <span id="quiz-btn-icon">✍️</span> <span id="quiz-btn-text">進入拼寫考試</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ... (Script 邏輯保持不變，但在 render 裡稍微優化體驗)
+        let dailyList = [];
+        let currentIndex = 0;
+        let currentAudio = null;
+        let isQuizMode = false;
+
+        const commonPool = ["ability", "balance", "capture", "damage", "eager", "factor", "gather", "habit", "ignore", "jacket", "label", "magic", "narrow", "object", "package", "quality", "radical", "safety", "tablet", "unique", "vacant", "wander", "yield", "zealous"];
+        const proPool = ["asynchronous", "algorithm", "bandwidth", "callback", "debugging", "encryption", "frontend", "interface", "javascript", "kubernetes", "middleware", "normalization"];
+
+        async function init() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('card').classList.add('hidden');
+            dailyList = [];
+            currentIndex = 0;
+            
+            const shuffledCommon = commonPool.sort(() => 0.5 - Math.random()).slice(0, 10);
+            const shuffledPro = proPool.sort(() => 0.5 - Math.random()).slice(0, 1);
+            const combined = [...shuffledCommon.map(w => ({w, type: 'General'})), ...shuffledPro.map(w => ({w, type: 'Technical'}))];
+
+            for (let item of combined) {
+                const data = await getFullWordInfo(item.w, item.type);
+                dailyList.push(data);
+            }
+
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('card').classList.remove('hidden');
+            render();
+        }
+
+        async function getFullWordInfo(word, type) {
+            try {
+                const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+                const dictData = await dictRes.json();
+                const entry = dictData[0];
+
+                const transRes = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q=${word}`);
+                const transData = await transRes.json();
+
+                return {
+                    word: word,
+                    phonetic: entry.phonetic || (entry.phonetics.find(p => p.text)?.text) || "/ - /",
+                    pos: entry.meanings[0].partOfSpeech,
+                    definition: entry.meanings[0].definitions[0].definition,
+                    translation: transData[0][0][0],
+                    audio: entry.phonetics.find(p => p.audio !== "")?.audio || null,
+                    type: type
+                };
+            } catch (e) {
+                return { word, phonetic: "/ - /", pos: "n.", definition: "No definition found.", translation: "載入失敗", audio: null, type };
+            }
+        }
+
+        function render() {
+            const data = dailyList[currentIndex];
+            document.getElementById('word-display').innerText = data.word;
+            document.getElementById('phonetic').innerText = data.phonetic;
+            document.getElementById('pos').innerText = `${data.pos}.`;
+            document.getElementById('translation').innerText = data.translation;
+            document.getElementById('en-definition').innerText = data.definition;
+            document.getElementById('progress-text').innerText = `Word ${currentIndex + 1} / 11`;
+            
+            const badge = document.getElementById('type-badge');
+            badge.innerText = data.type;
+            badge.className = data.type === 'Technical' ? 
+                "bg-amber-400 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 inline-block text-amber-900" : 
+                "bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 inline-block";
+
+            isQuizMode = false;
+            document.getElementById('quiz-area').classList.add('hidden');
+            document.getElementById('quiz-btn-text').innerText = "進入拼寫考試";
+            document.getElementById('quiz-btn-icon').innerText = "✍️";
+            document.getElementById('quiz-input').value = "";
+            document.getElementById('feedback').innerText = "";
+            currentAudio = data.audio;
+            
+            setTimeout(playAudio, 300);
+        }
+
+        function toggleQuiz() {
+            isQuizMode = !isQuizMode;
+            const area = document.getElementById('quiz-area');
+            const btnText = document.getElementById('quiz-btn-text');
+            const btnIcon = document.getElementById('quiz-btn-icon');
+            
+            if (isQuizMode) {
+                area.classList.remove('hidden');
+                btnText.innerText = "返回學習模式";
+                btnIcon.innerText = "📖";
+                document.getElementById('quiz-input').focus();
+            } else {
+                area.classList.add('hidden');
+                btnText.innerText = "進入拼寫考試";
+                btnIcon.innerText = "✍️";
+            }
+        }
+
+        function playAudio() {
+            if (currentAudio) {
+                const audio = new Audio(currentAudio);
+                audio.play().catch(e => fallbackSpeak());
+            } else {
+                fallbackSpeak();
+            }
+        }
+
+        function fallbackSpeak() {
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(dailyList[currentIndex].word);
+            msg.lang = 'en-US';
+            msg.rate = 0.8;
+            window.speechSynthesis.speak(msg);
+        }
+
+        document.getElementById('quiz-input').addEventListener('input', (e) => {
+            const target = dailyList[currentIndex].word.toLowerCase();
+            const input = e.target.value.toLowerCase();
+            const feedback = document.getElementById('feedback');
+            
+            if (input === target) {
+                feedback.innerText = "✨ Excellent! 拼寫正確";
+                feedback.className = "text-center mt-3 font-bold h-5 text-green-500 animate-bounce";
+                playAudio();
+            } else if (target.startsWith(input)) {
+                feedback.innerText = "";
+            } else {
+                feedback.innerText = "❌ Keep trying!";
+                feedback.className = "text-center mt-3 font-bold h-5 text-red-400";
+            }
+        });
+
+        function nextWord() {
+            currentIndex = (currentIndex + 1) % dailyList.length;
+            render();
+        }
+
+        function prevWord() {
+            currentIndex = (currentIndex - 1 + dailyList.length) % dailyList.length;
+            render();
+        }
+
+        function refreshNewSet() {
+            if(confirm("確定要更換一組新的 11 個單字嗎？")) {
+                init();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

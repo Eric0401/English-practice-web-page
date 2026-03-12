@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 核心單字老師</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+        body { font-family: 'Lexend', 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .loading-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .capitalize-first { text-transform: capitalize; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+
+    <div id="loading" class="text-center">
+        <div class="loading-spin text-6xl mb-4">🌀</div>
+        <p class="text-indigo-600 font-bold tracking-widest" id="loading-text">正在挑選高頻核心單字...</p>
+    </div>
+
+    <div id="learning-card" class="hidden max-w-lg w-full glass rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+        <div class="bg-indigo-600 p-5 text-white flex justify-between items-center">
+            <div>
+                <span class="bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider mb-1 inline-block">Oxford 3000 Core</span>
+                <div id="progress-text" class="text-xs font-bold opacity-80 mt-1 uppercase">Word 1 / 10</div>
+            </div>
+            <button onclick="refreshNewSet()" class="text-xs bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition-all font-bold border border-white/20 active:scale-90">
+                🔄 換一組
+            </button>
+        </div>
+
+        <div class="p-8">
+            <div class="text-center mb-8">
+                <h2 id="word-display" class="text-5xl font-black text-gray-800 mb-2 tracking-tight capitalize-first">Word</h2>
+                <p id="phonetic" class="text-indigo-500 font-bold text-xl mb-4 bg-indigo-50 inline-block px-4 py-1 rounded-full">/音標/</p>
+                <div class="flex items-center justify-center gap-3 mb-6">
+                    <span id="pos" class="text-indigo-300 italic font-black text-lg">pos.</span>
+                    <span id="translation" class="text-gray-700 text-3xl font-black">中文翻譯</span>
+                </div>
+                <button onclick="playAudio()" class="mx-auto w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-100 active:scale-90 transition-all">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+                </button>
+            </div>
+            <div class="bg-slate-50 p-5 rounded-2xl mb-8 border border-slate-100 italic text-gray-500 text-sm leading-relaxed min-h-[80px]" id="en-definition">載入中...</div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <button onclick="prevWord()" class="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 active:scale-95">上一個</button>
+                <button onclick="nextWord()" class="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 active:scale-95">下一個</button>
+            </div>
+            <button onclick="enterQuizMode()" class="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">
+                ✍️ 挑戰 10 題總結測驗
+            </button>
+        </div>
+    </div>
+
+    <div id="quiz-space" class="hidden max-w-lg w-full glass rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[90vh]">
+        <div class="bg-slate-900 p-6 text-white text-center">
+            <h3 class="text-xl font-black tracking-widest">核心單字大挑戰</h3>
+            <p class="text-indigo-400 text-xs mt-1 font-bold italic">看中文填寫正確單字</p>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 custom-scroll space-y-5 bg-slate-50/30" id="quiz-list">
+            </div>
+        <div class="p-6 bg-white border-t border-slate-100 grid grid-cols-2 gap-4">
+            <button onclick="exitQuizMode()" class="py-4 bg-slate-100 text-slate-500 rounded-2xl font-bold active:bg-slate-200">返回</button>
+            <button onclick="checkAllAnswers()" class="py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 active:scale-95">送出答案</button>
+        </div>
+    </div>
+
+    <script>
+        let dailyList = [];
+        let currentIndex = 0;
+        
+        // 精選 3000 個高頻核心單字的一部分 (這確保了抽到的都是常用的)
+        const corePool = [
+            "abandon", "ability", "absence", "absolute", "academic", "accept", "access", "accident", "accompany", "accomplish", 
+            "account", "accurate", "accuse", "achieve", "acquire", "action", "active", "actually", "adapt", "additional", 
+            "address", "adequate", "adjust", "admire", "admit", "adopt", "advance", "advantage", "adventure", "advice", 
+            "afford", "agency", "agenda", "agent", "aggressive", "agree", "agriculture", "ahead", "aircraft", "alarm", 
+            "alcohol", "alive", "alliance", "allocate", "allow", "almost", "alone", "along", "already", "alternative", 
+            "although", "altogether", "always", "amazing", "ambition", "ambulance", "amount", "analyze", "ancestor", "ancient", 
+            "anger", "angle", "animal", "anniversary", "announce", "annoy", "annual", "another", "answer", "anxiety", 
+            "anyway", "apartment", "apologize", "apparent", "appeal", "appear", "apple", "application", "appoint", "appreciate", 
+            "approach", "appropriate", "approval", "approve", "approximate", "architect", "area", "argue", "arise", "army", 
+            "around", "arrange", "arrest", "arrival", "arrive", "article", "artificial", "artist", "asleep", "aspect", 
+            "assault", "assemble", "assert", "assess", "assignment", "assist", "associate", "assume", "assurance", "atmosphere", 
+            "attach", "attack", "attain", "attempt", "attend", "attention", "attitude", "attract", "attribute", "audience", 
+            "author", "authority", "automatic", "available", "average", "avoid", "awake", "award", "aware", "awesome", 
+            "background", "balance", "balloon", "barrier", "base", "basic", "battery", "battle", "beach", "beauty", 
+            "because", "become", "before", "begin", "behalf", "behave", "behavior", "behind", "belief", "believe", 
+            "belong", "below", "benefit", "beside", "besides", "better", "between", "beyond", "bicycle", "biology", 
+            "birth", "birthday", "biscuit", "bitter", "blank", "block", "blood", "board", "boat", "body", 
+            "bonus", "border", "bottle", "bottom", "boundary", "branch", "brave", "bread", "break", "breakfast", 
+            "bridge", "brief", "bright", "brilliant", "bring", "broadcast", "brother", "brush", "budget", "build", 
+            "building", "bullet", "bundle", "burden", "burn", "burst", "business", "busy", "button", "buyer", 
+            "cabinet", "cable", "cake", "calculate", "calendar", "camera", "campaign", "campus", "cancel", "cancer", 
+            "candidate", "canvas", "capable", "capacity", "capital", "captain", "capture", "carbon", "career", "careful", 
+            "cargo", "carpet", "carrier", "carry", "carton", "case", "cash", "castle", "casual", "catalog", 
+            "catch", "category", "cattle", "cause", "caution", "cave", "ceiling", "celebrate", "cell", "cemetery", 
+            "center", "central", "century", "ceremony", "certain", "chain", "chair", "challenge", "chamber", "champion", 
+            "chance", "change", "channel", "chapter", "character", "charge", "charity", "charm", "chart", "chase", 
+            "cheap", "check", "cheek", "cheerful", "cheese", "chemical", "chemist", "chemistry", "chest", "chicken", 
+            "chief", "child", "childhood", "chocolate", "choice", "choose", "church", "cinema", "circle", "circuit", 
+            "citizen", "city", "civil", "claim", "classic", "classify", "clean", "clear", "clever", "client", 
+            "climate", "climb", "clinic", "clock", "close", "cloth", "clothes", "clothing", "cloud", "clue", 
+            "coach", "coast", "coat", "code", "coffee", "coin", "cold", "collapse", "collect", "college", 
+            "colony", "color", "column", "combine", "comfort", "command", "comment", "commerce", "commit", "committee", 
+            "common", "company", "compare", "compass", "compete", "complain", "complex", "component", "compose", "compound", 
+            "comprise", "compute", "computer", "conceal", "concept", "concern", "concert", "conclude", "concrete", "condition", 
+            "conduct", "conference", "confess", "confide", "confident", "confirm", "conflict", "confront", "confuse", "connect", 
+            "conquer", "conscience", "conscious", "consent", "conserve", "consider", "consist", "constant", "construct", "consult", 
+            "consumer", "contact", "contain", "content", "contest", "context", "continue", "contract", "contrast", "control", 
+            "convert", "convince", "cook", "cookie", "cool", "copper", "copy", "corner", "correct", "corridor", 
+            "cost", "costume", "cottage", "cotton", "council", "counsel", "count", "counter", "country", "couple", 
+            "courage", "course", "court", "cousin", "cover", "crack", "craft", "crash", "crazy", "create", 
+            "creative", "credit", "crew", "crime", "criminal", "crisis", "critic", "critical", "criticize", "cross", 
+            "crowd", "crown", "crucial", "cruel", "cruise", "crush", "crystal", "culture", "cupboard", "curious", 
+            "currency", "current", "curtain", "custom", "customer", "cycle", "daily", "damage", "dance", "danger", 
+            "dark", "database", "daughter", "dead", "deal", "debate", "debris", "debt", "decade", "decay", 
+            "decent", "decide", "decision", "declare", "decline", "decorate", "decrease", "deep", "defeat", "defence", 
+            "defend", "define", "definite", "degree", "delay", "delegate", "delicate", "delight", "deliver", "delivery", 
+            "demand", "democracy", "demonstrate", "denial", "dense", "dental", "deny", "depart", "department", "departure", 
+            "depend", "depict", "deposit", "depress", "depth", "derive", "descend", "describe", "desert", "deserve", 
+            "design", "desire", "desktop", "despair", "despite", "destroy", "detail", "detect", "determine", "develop", 
+            "device", "devise", "devote", "diagram", "dialogue", "diamond", "diary", "dictate", "dictionary", "differ", 
+            "difficult", "digital", "dignity", "dinner", "dinosaur", "diplomat", "direct", "dirty", "disagree", "disappear", 
+            "disappoint", "disaster", "discard", "discipline", "disclose", "discount", "discover", "discuss", "disease", "disguise", 
+            "disgust", "dish", "dislike", "dismiss", "disorder", "display", "disposal", "dispute", "distance", "distant", 
+            "distinct", "distinguish", "distract", "distress", "distribute", "district", "disturb", "dive", "diverse", "divide", 
+            "divine", "divorce", "doctor", "document", "dollar", "domain", "domestic", "dominant", "donate", "door", 
+            "double", "doubt", "down", "draft", "drain", "drama", "drastic", "draw", "drawer", "dream", 
+            "dress", "drink", "drive", "driver", "drop", "drought", "drug", "drum", "drunk", "dual", 
+            "duck", "dull", "dump", "duplicate", "durable", "duration", "dust", "duty", "dynamic", "eager", 
+            "early", "earn", "earth", "earthquake", "ease", "east", "easy", "echo", "ecology", "economic", 
+            "economy", "edge", "edit", "editor", "educate", "effect", "efficient", "effort", "eight", "either", 
+            "elaborate", "elbow", "elder", "elect", "electric", "elegant", "element", "elephant", "eliminate", "elite", 
+            "else", "elsewhere", "email", "embarrass", "embassy", "embrace", "emerge", "emergency", "emission", "emotion", 
+            "emphasis", "empire", "employ", "employee", "empty", "enable", "enclose", "encounter", "encourage", "ending", 
+            "endure", "enemy", "energy", "enforce", "engage", "engine", "engineer", "enhance", "enjoy", "enlarge", 
+            "enormous", "enough", "enquiry", "ensure", "enter", "entertain", "entire", "entitle", "entrance", "entry", 
+            "envelope", "environment", "episode", "equal", "equation", "equip", "equivalent", "error", "escape", "escort", 
+            "essay", "essence", "essential", "establish", "estate", "estimate", "eternal", "ethics", "ethnic", "evaluate", 
+            "evening", "event", "eventual", "ever", "every", "evidence", "evident", "evil", "evolve", "exact", 
+            "examine", "example", "exceed", "excellent", "except", "excess", "exchange", "excite", "exclude", "exclusive", 
+            "excuse", "execute", "exercise", "exhaust", "exhibit", "exist", "exit", "exotic", "expand", "expect", 
+            "expedition", "expense", "expert", "explain", "explicit", "explode", "exploit", "explore", "export", "expose", 
+            "express", "extend", "extent", "exterior", "external", "extra", "extract", "extreme", "eyebrow", "fabric", 
+            "face", "facility", "factor", "factory", "faculty", "fade", "failure", "faint", "fair", "faith", 
+            "false", "fame", "familiar", "family", "famous", "fancy", "fashion", "fasten", "fatal", "father", 
+            "fatigue", "fault", "favor", "favorite", "fear", "feasible", "feather", "feature", "federal", "feedback", 
+            "fellow", "female", "fence", "ferry", "fertile", "festival", "fetch", "fiber", "fiction", "field", 
+            "fierce", "fight", "figure", "file", "filter", "final", "finance", "finger", "finish", "fire", 
+            "firm", "fiscal", "fish", "fist", "fitness", "fixed", "flame", "flash", "flat", "flavor", 
+            "flee", "fleet", "flesh", "flexible", "flight", "float", "flock", "flood", "floor", "flour", 
+            "flow", "flower", "fluid", "flush", "flying", "focus", "folder", "follow", "fond", "food", 
+            "foot", "footage", "football", "forbid", "force", "forecast", "foreign", "forest", "forever", "forget", 
+            "forgive", "formal", "format", "former", "formula", "fortress", "fortune", "forward", "fossil", "foster", 
+            "foundation", "fountain", "fragile", "fragment", "frame", "framework", "frank", "fraud", "free", "freedom", 
+            "freeze", "frequent", "fresh", "friend", "fright", "frontier", "frost", "fruit", "frustrate", "fuel", 
+            "fulfill", "full", "function", "fund", "funeral", "funny", "furious", "furnace", "furnish", "furniture", 
+            "further", "future", "gadget", "gain", "galaxy", "gallery", "gamble", "garage", "garden", "garment", 
+            "gasoline", "gate", "gather", "gauge", "gear", "gender", "general", "generate", "generous", "genius", 
+            "gentle", "genuine", "geography", "gesture", "ghost", "giant", "gift", "glance", "glass", "global", 
+            "glory", "glove", "glow", "goal", "gold", "golden", "good", "goodbye", "gorgeous", "govern", 
+            "grace", "grade", "gradual", "graduate", "grain", "grammar", "grand", "grant", "graph", "grasp", 
+            "grass", "grateful", "grave", "gravity", "gray", "great", "greed", "green", "greet", "grid", 
+            "grief", "gross", "ground", "group", "grow", "growth", "guarantee", "guard", "guess", "guest", 
+            "guide", "guilt", "guitar", "habit", "habitat", "hair", "half", "hammer", "hand", "handle", 
+            "handsome", "hang", "happen", "happy", "harbor", "hard", "hardly", "harvest", "haste", "hazard", 
+            "head", "headline", "health", "heart", "heat", "heaven", "heavy", "height", "helicopter", "hell", 
+            "helmet", "help", "helpful", "herald", "herb", "heritage", "hero", "hesitate", "hidden", "hide", 
+            "high", "highway", "hint", "hire", "history", "hobby", "hold", "holiday", "hollow", "holy", 
+            "home", "honest", "honey", "honor", "hope", "horizon", "horror", "horse", "hospital", "host", 
+            "hostile", "hotel", "hour", "house", "household", "housing", "huge", "human", "humble", "humid", 
+            "humor", "hundred", "hungry", "hunt", "hurdle", "hurry", "husband", "hybrid", "hydrogen", "hygiene"
+        ];
+
+        async function init() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('learning-card').classList.add('hidden');
+            document.getElementById('quiz-space').classList.add('hidden');
+            
+            dailyList = [];
+            let triedWords = new Set();
+            
+            while (dailyList.length < 10) {
+                let randomIndex = Math.floor(Math.random() * corePool.length);
+                let word = corePool[randomIndex];
+                
+                if (triedWords.has(word)) continue;
+                triedWords.add(word);
+                
+                document.getElementById('loading-text').innerText = `正在載入精選單字 (${dailyList.length}/10)...`;
+                
+                const data = await getFullWordInfo(word);
+                if (data) dailyList.push(data);
+            }
+
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('learning-card').classList.remove('hidden');
+            currentIndex = 0;
+            render();
+        }
+
+        async function getFullWordInfo(word) {
+            try {
+                const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+                if (!dictRes.ok) return null;
+                const dictData = await dictRes.json();
+                const transRes = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q=${word}`);
+                const transData = await transRes.json();
+
+                return {
+                    word: word,
+                    phonetic: dictData[0].phonetic || (dictData[0].phonetics.find(p => p.text)?.text) || "/ - /",
+                    pos: dictData[0].meanings[0].partOfSpeech,
+                    definition: dictData[0].meanings[0].definitions[0].definition,
+                    translation: transData[0][0][0],
+                    audio: dictData[0].phonetics.find(p => p.audio !== "")?.audio || null
+                };
+            } catch (e) { return null; }
+        }
+
+        function render() {
+            const data = dailyList[currentIndex];
+            document.getElementById('word-display').innerText = data.word;
+            document.getElementById('phonetic').innerText = data.phonetic;
+            document.getElementById('pos').innerText = `${data.pos}.`;
+            document.getElementById('translation').innerText = data.translation;
+            document.getElementById('en-definition').innerText = data.definition;
+            document.getElementById('progress-text').innerText = `Word ${currentIndex + 1} / 10`;
+            setTimeout(playAudio, 300);
+        }
+
+        function enterQuizMode() {
+            document.getElementById('learning-card').classList.add('hidden');
+            document.getElementById('quiz-space').classList.remove('hidden');
+            const quizList = document.getElementById('quiz-list');
+            quizList.innerHTML = '';
+            
+            dailyList.forEach((item, index) => {
+                quizList.innerHTML += `
+                    <div class="p-5 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs font-bold text-slate-300">#${index + 1}</span>
+                            <span class="text-xl font-black text-slate-800">${item.translation}</span>
+                        </div>
+                        <input type="text" data-ans="${item.word}" autocomplete="off" spellcheck="false" class="quiz-input w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-400 focus:bg-white outline-none font-bold text-center text-xl transition-all" placeholder="請填寫英文...">
+                        <p class="result-msg text-xs mt-2 font-bold hidden text-center uppercase tracking-tighter"></p>
+                    </div>
+                `;
+            });
+        }
+
+        function checkAllAnswers() {
+            const inputs = document.querySelectorAll('.quiz-input');
+            const messages = document.querySelectorAll('.result-msg');
+            let score = 0;
+
+            inputs.forEach((input, i) => {
+                const userAns = input.value.trim().toLowerCase();
+                const correctAns = input.getAttribute('data-ans').toLowerCase();
+                messages[i].classList.remove('hidden');
+
+                if (userAns === correctAns) {
+                    input.className = "quiz-input w-full p-4 bg-green-50 rounded-2xl border-2 border-green-500 outline-none font-bold text-center text-xl text-green-700";
+                    messages[i].innerText = "✅ 正確";
+                    messages[i].className = "result-msg text-xs mt-2 font-bold text-green-500";
+                    score++;
+                } else {
+                    input.className = "quiz-input w-full p-4 bg-red-50 rounded-2xl border-2 border-red-500 outline-none font-bold text-center text-xl text-red-700";
+                    messages[i].innerText = `正解：${correctAns}`;
+                    messages[i].className = "result-msg text-xs mt-2 font-bold text-red-500";
+                }
+            });
+            alert(`挑戰結束！你答對了 ${score} / 10。`);
+        }
+
+        function exitQuizMode() {
+            document.getElementById('quiz-space').classList.add('hidden');
+            document.getElementById('learning-card').classList.remove('hidden');
+        }
+
+        function playAudio() {
+            const data = dailyList[currentIndex];
+            if (data.audio) new Audio(data.audio).play();
+            else {
+                window.speechSynthesis.cancel();
+                const msg = new SpeechSynthesisUtterance(data.word);
+                msg.lang = 'en-US';
+                window.speechSynthesis.speak(msg);
+            }
+        }
+
+        function nextWord() { currentIndex = (currentIndex + 1) % dailyList.length; render(); }
+        function prevWord() { currentIndex = (currentIndex - 1 + dailyList.length) % dailyList.length; render(); }
+        function refreshNewSet() { if(confirm("確定要更換一組 10 個核心單字嗎？")) init(); }
+
+        init();
+    </script>
+</body>
+</html>
